@@ -404,9 +404,9 @@
 <header>
   <div class="logo">Clean<span>Shot</span></div>
   <div class="api-row">
-    <span class="tag">Clipdrop API</span>
-    <input type="password" id="apiKey" placeholder="sk-... (paste your Clipdrop API key)">
-    <a href="https://clipdrop.co/apis" target="_blank" style="color:var(--muted);font-size:11px;text-decoration:none;">Get free key ↗</a>
+    <span class="tag">Stability AI API</span>
+    <input type="password" id="apiKey" placeholder="sk-... (paste your Stability AI API key)">
+    <a href="https://platform.stability.ai/account/keys" target="_blank" style="color:var(--muted);font-size:11px;text-decoration:none;">Get key ↗</a>
   </div>
 </header>
 
@@ -646,7 +646,7 @@ async function runRemoval() {
   const img = images.find(i => i.id === currentId);
   if (!img) return;
   const apiKey = document.getElementById('apiKey').value.trim();
-  if (!apiKey) { notify('Paste your Clipdrop API key in the top bar', 'error'); return; }
+  if (!apiKey) { notify('Paste your Stability AI API key in the top bar', 'error'); return; }
 
   // Check mask has something
   const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
@@ -658,29 +658,37 @@ async function runRemoval() {
   document.getElementById('removeBtn').disabled = true;
 
   try {
-    // Build form data
     const formData = new FormData();
 
-    // image_file — current canvas as blob
+    // image — current canvas as blob
     const imgBlob = await canvasToBlob(imgCanvas);
-    formData.append('image_file', imgBlob, 'image.png');
+    formData.append('image', imgBlob, 'image.png');
 
-    // mask_file — white on black
+    // mask — white = remove, black = keep
     const maskBlob = await getMaskBlob();
-    formData.append('mask_file', maskBlob, 'mask.png');
+    formData.append('mask', maskBlob, 'mask.png');
 
-    // optional text hint
-    if (hint) formData.append('text_prompt', hint);
+    // optional prompt hint
+    if (hint) formData.append('prompt', hint);
+    formData.append('output_format', 'png');
 
-    const res = await fetch('https://clipdrop-api.co/cleanup/v1', {
+    // Use inpaint endpoint if hint provided, erase if not
+    const endpoint = hint
+      ? 'https://api.stability.ai/v2beta/stable-image/edit/inpaint'
+      : 'https://api.stability.ai/v2beta/stable-image/edit/erase';
+
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'x-api-key': apiKey },
+      headers: {
+        'authorization': `Bearer ${apiKey}`,
+        'accept': 'image/*'
+      },
       body: formData
     });
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Clipdrop error ${res.status}: ${err}`);
+      throw new Error(`Stability AI error ${res.status}: ${err}`);
     }
 
     const blob = await res.blob();
