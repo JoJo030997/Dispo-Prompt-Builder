@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CleanShot — Real Estate Image Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0f11;
+    --surface: #161820;
+    --surface2: #1e2026;
+    --border: #2a2d36;
+    --accent: #c8f060;
+    --accent2: #60d4f0;
+    --text: #e8eaf0;
+    --muted: #6b7080;
+    --danger: #f06060;
+    --success: #60f0a0;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOP BAR ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+  .logo span { color: var(--text); }
+  .api-row { display: flex; align-items: center; gap: 8px; }
+  .api-row input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    width: 280px;
+  }
+  .api-row input:focus { outline: none; border-color: var(--accent); }
+  .tag { background: var(--border); color: var(--muted); padding: 3px 8px; border-radius: 4px; font-size: 11px; }
+
+  /* ── LAYOUT ── */
+  .app { display: flex; flex: 1; min-height: 0; }
+
+  /* ── LEFT SIDEBAR: queue ── */
+  .sidebar {
+    width: 200px;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-header span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .add-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 11px;
+    transition: all .15s;
+  }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .queue-list { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .queue-item {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 2px solid transparent;
+    cursor: pointer;
+    position: relative;
+    transition: border-color .15s;
+    background: var(--surface2);
+  }
+  .queue-item.active { border-color: var(--accent); }
+  .queue-item.done { border-color: var(--success); }
+  .queue-item img { width: 100%; height: 90px; object-fit: cover; display: block; }
+  .queue-item .q-name {
+    padding: 5px 8px;
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .done-badge {
+    position: absolute;
+    top: 5px; right: 5px;
+    background: var(--success);
+    color: #000;
+    font-size: 9px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .empty-queue {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.7;
+  }
+
+  /* ── MAIN EDITOR ── */
+  .editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* drop zone */
+  .drop-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border: 2px dashed var(--border);
+    margin: 32px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    color: var(--muted);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(200,240,96,.04);
+    color: var(--text);
+  }
+  .drop-zone .icon { font-size: 48px; }
+  .drop-zone h2 { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 300; }
+  .drop-zone p { font-size: 12px; }
+  .drop-zone label {
+    background: var(--accent);
+    color: #0e0f11;
+    padding: 10px 22px;
+    border-radius: 7px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .drop-zone label:hover { opacity: .85; }
+
+  /* canvas toolbar */
+  .canvas-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+  .canvas-toolbar .filename {
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    font-weight: 300;
+    flex: 1;
+    color: var(--text);
+  }
+  .tool-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .tool-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .tool-btn.active { background: var(--accent2); color: #0e0f11; border-color: var(--accent2); }
+  .tool-btn.danger { border-color: var(--danger); color: var(--danger); }
+  .tool-btn.danger:hover { background: var(--danger); color: #fff; }
+  .tool-btn.primary { background: var(--accent); color: #0e0f11; border-color: var(--accent); font-weight: 500; }
+  .tool-btn.primary:hover { opacity: .85; }
+  .tool-btn.done-btn { background: var(--success); color: #000; border-color: var(--success); font-weight: 500; }
+  .sep { width: 1px; height: 20px; background: var(--border); }
+  .brush-size {
+    display: flex; align-items: center; gap: 6px; color: var(--muted);
+  }
+  .brush-size input { width: 70px; accent-color: var(--accent); }
+  .brush-size span { min-width: 20px; color: var(--text); }
+
+  /* canvas wrapper */
+  .canvas-wrapper {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #090a0c;
+    position: relative;
+  }
+  .canvas-stack {
+    position: relative;
+    cursor: crosshair;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .canvas-stack canvas { display: block; }
+  #maskCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+  /* status bar */
+  .status-bar {
+    padding: 6px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .status-bar .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .status-bar .dot.green { background: var(--success); }
+  .status-bar .dot.yellow { background: #f0c060; }
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── RIGHT PANEL: history ── */
+  .history-panel {
+    width: 180px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .history-panel .ph { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .history-list { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .history-item {
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color .15s;
+    background: var(--surface2);
+  }
+  .history-item:hover { border-color: var(--accent2); }
+  .history-item.current { border-color: var(--accent2); }
+  .history-item img { width: 100%; height: 75px; object-fit: cover; display: block; }
+  .history-item .h-label { padding: 4px 7px; font-size: 10px; color: var(--muted); }
+
+  /* ── FINISHED GALLERY ── */
+  .gallery-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 28px;
+    gap: 20px;
+    overflow-y: auto;
+  }
+  .gallery-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .gallery-header h2 { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 300; }
+  .gallery-header .actions { display: flex; gap: 8px; }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .gallery-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+    transition: border-color .15s;
+    cursor: pointer;
+  }
+  .gallery-card.selected { border-color: var(--accent); }
+  .gallery-card img { width: 100%; height: 160px; object-fit: cover; display: block; }
+  .gallery-card .gc-footer {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .gallery-card .gc-name { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .gallery-card .gc-check {
+    width: 16px; height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .gallery-card.selected .gc-check { background: var(--accent); border-color: var(--accent); color: #000; }
+
+  /* ── NOTIFICATION ── */
+  .notif {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    font-size: 12px;
+    z-index: 999;
+    max-width: 320px;
+    transform: translateY(20px); opacity: 0;
+    transition: all .3s;
+    pointer-events: none;
+  }
+  .notif.show { transform: translateY(0); opacity: 1; }
+  .notif.success { border-color: var(--success); color: var(--success); }
+  .notif.error { border-color: var(--danger); color: var(--danger); }
+
+  /* ── HINT BAR ── */
+  .hint-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .hint-bar .hint-label {
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .hint-bar input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    transition: border-color .15s;
+  }
+  .hint-bar input:focus { outline: none; border-color: var(--accent2); }
+  .hint-bar input::placeholder { color: var(--muted); }
+  .hint-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(96,212,240,.1);
+    border: 1px solid rgba(96,212,240,.25);
+    color: var(--accent2);
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* hidden */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Clean<span>Shot</span></div>
+  <div class="api-row">
+    <span class="tag">Clipdrop API</span>
+    <input type="password" id="apiKey" placeholder="sk-... (paste your Clipdrop API key)">
+    <a href="https://clipdrop.co/apis" target="_blank" style="color:var(--muted);font-size:11px;text-decoration:none;">Get free key ↗</a>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>Queue</span>
+      <button class="add-btn" onclick="document.getElementById('addMore').click()">+ Add</button>
+      <input type="file" id="addMore" accept="image/*" multiple class="hidden" onchange="addImages(this.files)">
+    </div>
+    <div class="queue-list" id="queueList">
+      <div class="empty-queue" id="emptyQueue">No images yet.<br>Drop them in or click below.</div>
+    </div>
+    <div style="padding:10px">
+      <button class="tool-btn" style="width:100%;justify-content:center" onclick="showGallery()">📦 View Finished</button>
+    </div>
+  </div>
+
+  <!-- EDITOR AREA -->
+  <div class="editor-area" id="editorArea">
+
+    <!-- DROP ZONE -->
+    <div class="drop-zone" id="dropZone"
+      ondragover="event.preventDefault(); this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="onDrop(event)">
+      <div class="icon">🏠</div>
+      <h2>Drop your photos here</h2>
+      <p>Supports JPG, PNG, WEBP — single or bundle</p>
+      <label>
+        Browse Files
+        <input type="file" accept="image/*" multiple class="hidden" onchange="addImages(this.files)">
+      </label>
+    </div>
+
+    <!-- CANVAS VIEW (hidden initially) -->
+    <div id="canvasView" class="hidden" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div class="canvas-toolbar">
+        <span class="filename" id="currentFilename">photo.jpg</span>
+        <div class="brush-size">
+          <span>⬤</span>
+          <input type="range" id="brushSize" min="10" max="120" value="40" oninput="updateBrush()">
+          <span id="brushVal">40</span>
+        </div>
+        <div class="sep"></div>
+        <button class="tool-btn" id="toolBrush" onclick="setTool('brush')">🖌 Brush</button>
+        <button class="tool-btn" id="toolEraser" onclick="setTool('eraser')">◻ Erase Mask</button>
+        <div class="sep"></div>
+        <button class="tool-btn" onclick="clearMask()">Clear Mask</button>
+        <button class="tool-btn primary" onclick="runRemoval()" id="removeBtn">✦ Remove Objects</button>
+        <button class="tool-btn done-btn" onclick="markDone()">✔ Done</button>
+      </div>
+
+      <div style="display:flex;flex:1;min-height:0">
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <div class="canvas-stack" id="canvasStack">
+            <canvas id="imgCanvas"></canvas>
+            <canvas id="maskCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- HISTORY PANEL -->
+        <div class="history-panel">
+          <div class="ph">Versions</div>
+          <div class="history-list" id="historyList"></div>
+        </div>
+      </div>
+
+      <div class="hint-bar">
+        <span class="hint-label">✦ Hint <span style="opacity:.5">(optional)</span></span>
+        <input type="text" id="hintInput" placeholder="e.g. replace with hardwood floor, clean empty wall, remove trash bags…" maxlength="200">
+        <span class="hint-pill" id="hintPill" style="display:none">active</span>
+      </div>
+
+      <div class="status-bar">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusMsg">Select an area to remove</span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- GALLERY MODAL -->
+<div id="galleryModal" class="hidden" style="position:fixed;inset:0;background:var(--bg);z-index:200;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface)">
+    <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:300">📦 Finished Images</div>
+    <div style="display:flex;gap:8px">
+      <button class="tool-btn" onclick="toggleSelectAll()">Select All</button>
+      <button class="tool-btn primary" onclick="downloadSelected()">⬇ Download Selected</button>
+      <button class="tool-btn" onclick="hideGallery()">← Back to Editor</button>
+    </div>
+  </div>
+  <div class="gallery-view">
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <div id="galleryEmpty" class="hidden" style="text-align:center;color:var(--muted);padding:60px">No finished images yet. Mark images as done to collect them here.</div>
+  </div>
+</div>
+
+<!-- NOTIFICATION -->
+<div class="notif" id="notif"></div>
+
+<script>
+// ── STATE ──
+let images = [];        // { id, name, file, origDataUrl, currentDataUrl, history[], done }
+let currentId = null;
+let tool = 'brush';
+let isDrawing = false;
+let brushRadius = 40;
+
+// Canvas refs
+const imgCanvas = document.getElementById('imgCanvas');
+const maskCanvas = document.getElementById('maskCanvas');
+const imgCtx = imgCanvas.getContext('2d');
+const maskCtx = maskCanvas.getContext('2d');
+
+// ── ADD IMAGES ──
+function addImages(files) {
+  if (!files || !files.length) return;
+  document.getElementById('emptyQueue').classList.add('hidden');
+  const arr = Array.from(files);
+  let loaded = 0;
+  arr.forEach(file => {
+    const id = Date.now() + Math.random();
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = { id, name: file.name, file, origDataUrl: e.target.result, currentDataUrl: e.target.result, history: [], done: false };
+      images.push(img);
+      renderQueue();
+      loaded++;
+      if (loaded === arr.length && !currentId) openImage(img.id);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+  addImages(e.dataTransfer.files);
+}
+
+// ── QUEUE ──
+function renderQueue() {
+  const list = document.getElementById('queueList');
+  list.querySelectorAll('.queue-item').forEach(el => el.remove());
+  images.forEach(img => {
+    const div = document.createElement('div');
+    div.className = 'queue-item' + (img.id === currentId ? ' active' : '') + (img.done ? ' done' : '');
+    div.innerHTML = `<img src="${img.currentDataUrl}"><div class="q-name">${img.name}</div>${img.done ? '<div class="done-badge">✔</div>' : ''}`;
+    div.onclick = () => openImage(img.id);
+    list.appendChild(div);
+  });
+}
+
+// ── OPEN IMAGE ──
+function openImage(id) {
+  currentId = id;
+  const img = images.find(i => i.id === id);
+  if (!img) return;
+
+  document.getElementById('dropZone').classList.add('hidden');
+  const cv = document.getElementById('canvasView');
+  cv.classList.remove('hidden');
+  cv.style.display = 'flex';
+  document.getElementById('currentFilename').textContent = img.name;
+
+  const el = new Image();
+  el.onload = () => {
+    const maxW = window.innerWidth - 200 - 180 - 40;
+    const maxH = window.innerHeight - 160;
+    let w = el.naturalWidth, h = el.naturalHeight;
+    const scale = Math.min(1, maxW / w, maxH / h);
+    w = Math.round(w * scale); h = Math.round(h * scale);
+    imgCanvas.width = w; imgCanvas.height = h;
+    maskCanvas.width = w; maskCanvas.height = h;
+    imgCtx.drawImage(el, 0, 0, w, h);
+    maskCtx.clearRect(0, 0, w, h);
+    renderHistory();
+    setStatus('idle', 'Paint over objects to remove them');
+  };
+  el.src = img.currentDataUrl;
+  renderQueue();
+}
+
+// ── DRAWING ──
+function setTool(t) {
+  tool = t;
+  document.getElementById('toolBrush').classList.toggle('active', t === 'brush');
+  document.getElementById('toolEraser').classList.toggle('active', t === 'eraser');
+}
+setTool('brush');
+
+function updateBrush() {
+  brushRadius = parseInt(document.getElementById('brushSize').value);
+  document.getElementById('brushVal').textContent = brushRadius;
+}
+
+function getPos(e) {
+  const rect = maskCanvas.getBoundingClientRect();
+  const scaleX = maskCanvas.width / rect.width;
+  const scaleY = maskCanvas.height / rect.height;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+}
+
+function paintMask(pos) {
+  maskCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  maskCtx.fillStyle = 'rgba(255, 80, 80, 0.55)';
+  maskCtx.beginPath();
+  maskCtx.arc(pos.x, pos.y, brushRadius, 0, Math.PI * 2);
+  maskCtx.fill();
+}
+
+const stack = document.getElementById('canvasStack');
+stack.addEventListener('mousedown', e => { isDrawing = true; paintMask(getPos(e)); });
+stack.addEventListener('mousemove', e => { if (isDrawing) paintMask(getPos(e)); });
+stack.addEventListener('mouseup', () => { isDrawing = false; });
+stack.addEventListener('mouseleave', () => { isDrawing = false; });
+
+function clearMask() {
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+}
+
+// ── HINT PILL TOGGLE ──
+document.getElementById('hintInput').addEventListener('input', function() {
+  const pill = document.getElementById('hintPill');
+  pill.style.display = this.value.trim() ? 'flex' : 'none';
+});
+
+// ── REMOVAL ──
+async function runRemoval() {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { notify('Paste your Clipdrop API key in the top bar', 'error'); return; }
+
+  // Check mask has something
+  const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  const hasMask = maskData.data.some((v, i) => i % 4 === 3 && v > 0);
+  if (!hasMask) { notify('Paint over the area you want to remove first', 'error'); return; }
+
+  const hint = document.getElementById('hintInput').value.trim();
+  setStatus('loading', hint ? `Processing: "${hint}"…` : 'Removing objects…');
+  document.getElementById('removeBtn').disabled = true;
+
+  try {
+    // Build form data
+    const formData = new FormData();
+
+    // image_file — current canvas as blob
+    const imgBlob = await canvasToBlob(imgCanvas);
+    formData.append('image_file', imgBlob, 'image.png');
+
+    // mask_file — white on black
+    const maskBlob = await getMaskBlob();
+    formData.append('mask_file', maskBlob, 'mask.png');
+
+    // optional text hint
+    if (hint) formData.append('text_prompt', hint);
+
+    const res = await fetch('https://clipdrop-api.co/cleanup/v1', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Clipdrop error ${res.status}: ${err}`);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    // Push to history BEFORE updating
+    img.history.push(img.currentDataUrl);
+
+    // Load result back onto canvas
+    const newImg = new Image();
+    newImg.onload = () => {
+      imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+      imgCtx.drawImage(newImg, 0, 0, imgCanvas.width, imgCanvas.height);
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+      // Save new current
+      img.currentDataUrl = imgCanvas.toDataURL('image/jpeg', 0.95);
+      renderQueue();
+      renderHistory();
+      // clear hint
+      document.getElementById('hintInput').value = '';
+      document.getElementById('hintPill').style.display = 'none';
+      setStatus('idle', 'Done! Paint more areas or mark as Done.');
+      notify('Objects removed successfully', 'success');
+    };
+    newImg.src = url;
+  } catch(err) {
+    setStatus('idle', 'Error — check your API key');
+    notify(err.message, 'error');
+  } finally {
+    document.getElementById('removeBtn').disabled = false;
+  }
+}
+
+function canvasToBlob(canvas) {
+  return new Promise(res => canvas.toBlob(res, 'image/png'));
+}
+
+function getMaskBlob() {
+  const tmp = document.createElement('canvas');
+  tmp.width = maskCanvas.width; tmp.height = maskCanvas.height;
+  const ctx = tmp.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  // Draw mask pixels as white
+  const src = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  const out = ctx.createImageData(tmp.width, tmp.height);
+  for (let i = 0; i < src.data.length; i += 4) {
+    const alpha = src.data[i + 3];
+    const val = alpha > 10 ? 255 : 0;
+    out.data[i] = val; out.data[i+1] = val; out.data[i+2] = val; out.data[i+3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return new Promise(res => tmp.toBlob(res, 'image/png'));
+}
+
+// ── HISTORY ──
+function renderHistory() {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  const list = document.getElementById('historyList');
+  list.innerHTML = '';
+
+  const all = [...img.history, img.currentDataUrl];
+  all.forEach((url, idx) => {
+    const div = document.createElement('div');
+    div.className = 'history-item' + (idx === all.length - 1 ? ' current' : '');
+    div.innerHTML = `<img src="${url}"><div class="h-label">${idx === 0 ? 'Original' : idx === all.length - 1 ? 'Current' : `v${idx}`}</div>`;
+    div.onclick = () => restoreVersion(idx);
+    list.appendChild(div);
+  });
+}
+
+function restoreVersion(idx) {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  const all = [...img.history, img.currentDataUrl];
+  const url = all[idx];
+  const el = new Image();
+  el.onload = () => {
+    imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+    imgCtx.drawImage(el, 0, 0, imgCanvas.width, imgCanvas.height);
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    // Trim history to this point
+    img.history = all.slice(0, idx);
+    img.currentDataUrl = url;
+    renderQueue();
+    renderHistory();
+    notify('Restored to that version', 'success');
+  };
+  el.src = url;
+}
+
+// ── DONE ──
+function markDone() {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  img.done = true;
+  img.currentDataUrl = imgCanvas.toDataURL('image/jpeg', 0.95);
+  notify(`"${img.name}" marked as done`, 'success');
+  renderQueue();
+
+  // Auto-advance to next undone image
+  const next = images.find(i => !i.done && i.id !== currentId);
+  if (next) { openImage(next.id); }
+  else {
+    setStatus('idle', 'All images done!');
+    notify('All done! Check the Finished gallery.', 'success');
+  }
+}
+
+// ── GALLERY ──
+function showGallery() {
+  const modal = document.getElementById('galleryModal');
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  renderGallery();
+}
+function hideGallery() {
+  document.getElementById('galleryModal').classList.add('hidden');
+}
+function renderGallery() {
+  const grid = document.getElementById('galleryGrid');
+  const empty = document.getElementById('galleryEmpty');
+  const done = images.filter(i => i.done);
+  grid.innerHTML = '';
+  if (!done.length) { empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  done.forEach(img => {
+    const div = document.createElement('div');
+    div.className = 'gallery-card selected';
+    div.dataset.id = img.id;
+    div.innerHTML = `<img src="${img.currentDataUrl}"><div class="gc-footer"><span class="gc-name">${img.name}</span><div class="gc-check">✓</div></div>`;
+    div.onclick = () => {
+      div.classList.toggle('selected');
+      div.querySelector('.gc-check').textContent = div.classList.contains('selected') ? '✓' : '';
+    };
+    grid.appendChild(div);
+  });
+}
+function toggleSelectAll() {
+  const cards = document.querySelectorAll('.gallery-card');
+  const allSelected = [...cards].every(c => c.classList.contains('selected'));
+  cards.forEach(c => {
+    c.classList.toggle('selected', !allSelected);
+    c.querySelector('.gc-check').textContent = !allSelected ? '✓' : '';
+  });
+}
+function downloadSelected() {
+  const selected = [...document.querySelectorAll('.gallery-card.selected')];
+  if (!selected.length) { notify('Select at least one image', 'error'); return; }
+  selected.forEach(card => {
+    const img = images.find(i => i.id == card.dataset.id);
+    if (!img) return;
+    const a = document.createElement('a');
+    a.href = img.currentDataUrl;
+    a.download = 'cleaned_' + img.name;
+    a.click();
+  });
+  notify(`Downloading ${selected.length} image(s)`, 'success');
+}
+
+// ── STATUS & NOTIFY ──
+function setStatus(state, msg) {
+  const dot = document.getElementById('statusDot');
+  document.getElementById('statusMsg').textContent = msg;
+  dot.className = 'dot' + (state === 'idle' ? ' green' : state === 'loading' ? ' yellow' : '');
+}
+let notifTimer;
+function notify(msg, type = 'success') {
+  const el = document.getElementById('notif');
+  el.textContent = msg;
+  el.className = 'notif show ' + type;
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
