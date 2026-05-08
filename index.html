@@ -395,6 +395,11 @@
     white-space: nowrap;
   }
 
+  .history-item .h-actions { padding: 4px 6px; display: flex; gap: 4px; }
+  .h-btn { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--muted); padding: 3px 0; border-radius: 4px; font-family: inherit; font-size: 9px; cursor: pointer; transition: all .15s; }
+  .h-btn.preview:hover { border-color: var(--accent2); color: var(--accent2); }
+  .h-btn.restore:hover { border-color: var(--danger); color: var(--danger); }
+
   /* hidden */
   .hidden { display: none !important; }
 </style>
@@ -462,6 +467,10 @@
         <button class="tool-btn done-btn" onclick="markDone()">✔ Done</button>
       </div>
 
+      <div id="previewBanner" class="hidden" style="background:rgba(96,212,240,.12);border-bottom:1px solid var(--accent2);padding:7px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--accent2)">
+        <span>👁 Preview mode — your current version is safe</span>
+        <button class="tool-btn" style="border-color:var(--accent2);color:var(--accent2)" onclick="exitPreview()">← Back to Current</button>
+      </div>
       <div style="display:flex;flex:1;min-height:0">
         <div class="canvas-wrapper" id="canvasWrapper">
           <div class="canvas-stack" id="canvasStack">
@@ -568,6 +577,8 @@ function renderQueue() {
 // ── OPEN IMAGE ──
 function openImage(id) {
   currentId = id;
+  previewingIdx = null;
+  document.getElementById('previewBanner').classList.add('hidden');
   const img = images.find(i => i.id === id);
   if (!img) return;
 
@@ -776,6 +787,8 @@ function getMaskBlob(growPx = 0) {
 }
 
 // ── HISTORY ──
+let previewingIdx = null; // null = not previewing, number = previewing that version
+
 function renderHistory() {
   const img = images.find(i => i.id === currentId);
   if (!img) return;
@@ -784,12 +797,60 @@ function renderHistory() {
 
   const all = [...img.history, img.currentDataUrl];
   all.forEach((url, idx) => {
+    const isCurrent = idx === all.length - 1;
+    const isPreviewing = previewingIdx === idx;
     const div = document.createElement('div');
-    div.className = 'history-item' + (idx === all.length - 1 ? ' current' : '');
-    div.innerHTML = `<img src="${url}"><div class="h-label">${idx === 0 ? 'Original' : idx === all.length - 1 ? 'Current' : `v${idx}`}</div>`;
-    div.onclick = () => restoreVersion(idx);
+    div.className = 'history-item' + (isCurrent && previewingIdx === null ? ' current' : '') + (isPreviewing ? ' current' : '');
+
+    const label = idx === 0 ? 'Original' : isCurrent ? 'Current' : `v${idx}`;
+    div.innerHTML = `
+      <img src="${url}">
+      <div class="h-label">${label}</div>
+      ${!isCurrent ? `<div class="h-actions">
+        <button class="h-btn preview" onclick="previewVersion(${idx})">👁 Preview</button>
+        <button class="h-btn restore" onclick="restoreVersion(${idx})">↩ Restore</button>
+      </div>` : `<div class="h-actions"><span style="color:var(--accent);font-size:10px">● active</span></div>`}
+    `;
     list.appendChild(div);
   });
+}
+
+function previewVersion(idx) {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  const all = [...img.history, img.currentDataUrl];
+  const url = all[idx];
+  previewingIdx = idx;
+
+  const el = new Image();
+  el.onload = () => {
+    imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+    imgCtx.drawImage(el, 0, 0, imgCanvas.width, imgCanvas.height);
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    renderHistory();
+    setStatus('idle', `Previewing v${idx === 0 ? ' Original' : idx} — history intact`);
+  };
+  el.src = url;
+
+  // Show a banner so user knows they're in preview mode
+  document.getElementById('previewBanner').classList.remove('hidden');
+}
+
+function exitPreview() {
+  const img = images.find(i => i.id === currentId);
+  if (!img) return;
+  previewingIdx = null;
+  document.getElementById('previewBanner').classList.add('hidden');
+
+  const el = new Image();
+  el.onload = () => {
+    imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+    imgCtx.drawImage(el, 0, 0, imgCanvas.width, imgCanvas.height);
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    renderHistory();
+    setStatus('idle', 'Back to current version');
+  };
+  el.src = img.currentDataUrl;
 }
 
 function restoreVersion(idx) {
@@ -797,16 +858,22 @@ function restoreVersion(idx) {
   if (!img) return;
   const all = [...img.history, img.currentDataUrl];
   const url = all[idx];
+
+  if (!confirm(`Restore to ${idx === 0 ? 'Original' : 'v' + idx}? Versions after this will be lost.`)) return;
+
+  previewingIdx = null;
+  document.getElementById('previewBanner').classList.add('hidden');
+
   const el = new Image();
   el.onload = () => {
     imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
     imgCtx.drawImage(el, 0, 0, imgCanvas.width, imgCanvas.height);
     maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-    // Trim history to this point
     img.history = all.slice(0, idx);
     img.currentDataUrl = url;
     renderQueue();
     renderHistory();
+    setStatus('idle', 'Restored — history trimmed to this point');
     notify('Restored to that version', 'success');
   };
   el.src = url;
