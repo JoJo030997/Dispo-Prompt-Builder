@@ -648,12 +648,16 @@ async function runRemoval() {
   const apiKey = document.getElementById('apiKey').value.trim();
   if (!apiKey) { notify('Paste your Stability AI API key in the top bar', 'error'); return; }
 
-  // Check mask has something
+  const hint = document.getElementById('hintInput').value.trim();
   const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
   const hasMask = maskData.data.some((v, i) => i % 4 === 3 && v > 0);
-  if (!hasMask) { notify('Paint over the area you want to remove first', 'error'); return; }
 
-  const hint = document.getElementById('hintInput').value.trim();
+  // Need at least one of: mask or hint
+  if (!hasMask && !hint) {
+    notify('Paint an area to remove, type a hint, or both', 'error');
+    return;
+  }
+
   setStatus('loading', hint ? `Processing: "${hint}"…` : 'Removing objects…');
   document.getElementById('removeBtn').disabled = true;
 
@@ -664,20 +668,23 @@ async function runRemoval() {
     const imgBlob = await canvasToBlob(imgCanvas);
     formData.append('image', imgBlob, 'image.png');
 
-    // mask — white = remove, black = keep
-    const maskBlob = await getMaskBlob();
-    formData.append('mask', maskBlob, 'mask.png');
+    // Always use inpaint — better quality than erase for real estate photos
+    // Build a smart prompt: combine scene context + user hint
+    const scenePrompt = hint
+      ? `Professional real estate photo, ${hint}, photorealistic, natural lighting, clean background, no artifacts`
+      : 'Professional real estate photo, clean empty space, photorealistic, natural lighting, seamless background fill, no artifacts, no patches';
+    formData.append('prompt', scenePrompt);
 
-    // optional prompt hint
-    if (hint) formData.append('prompt', hint);
-    formData.append('output_format', 'png');
+    if (hasMask) {
+      // Grow mask slightly for better edge blending
+      const grownMaskBlob = await getMaskBlob(8);
+      formData.append('mask', grownMaskBlob, 'mask.png');
+    }
 
-    // Use inpaint endpoint if hint provided, erase if not
-    const endpoint = hint
-      ? 'https://api.stability.ai/v2beta/stable-image/edit/inpaint'
-      : 'https://api.stability.ai/v2beta/stable-image/edit/erase';
+    formData.append('output_format', 'jpeg');
+    formData.append('grow_mask', '15'); // feather edges
 
-    const res = await fetch(endpoint, {
+    const res = await fetch('https://api.stability.ai/v2beta/stable-image/edit/inpaint', {
       method: 'POST',
       headers: {
         'authorization': `Bearer ${apiKey}`,
@@ -727,12 +734,13 @@ function canvasToBlob(canvas) {
   return new Promise(res => canvas.toBlob(res, 'image/png'));
 }
 
-function getMaskBlob() {
+function getMaskBlob(growPx = 0) {
   const tmp = document.createElement('canvas');
   tmp.width = maskCanvas.width; tmp.height = maskCanvas.height;
   const ctx = tmp.getContext('2d');
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, tmp.width, tmp.height);
+
   // Draw mask pixels as white
   const src = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
   const out = ctx.createImageData(tmp.width, tmp.height);
@@ -742,6 +750,28 @@ function getMaskBlob() {
     out.data[i] = val; out.data[i+1] = val; out.data[i+2] = val; out.data[i+3] = 255;
   }
   ctx.putImageData(out, 0, 0);
+
+  // Grow mask edges by drawing expanded white circles over existing white pixels
+  if (growPx > 0) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff';
+    const imgData = ctx.getImageData(0, 0, tmp.width, tmp.height);
+    const toGrow = [];
+    for (let y = 0; y < tmp.height; y++) {
+      for (let x = 0; x < tmp.width; x++) {
+        const idx = (y * tmp.width + x) * 4;
+        if (imgData.data[idx] === 255) toGrow.push({x, y});
+      }
+    }
+    // Draw expanded circles
+    const growCtx = tmp.getContext('2d');
+    toGrow.forEach(({x, y}) => {
+      growCtx.beginPath();
+      growCtx.arc(x, y, growPx, 0, Math.PI * 2);
+      growCtx.fill();
+    });
+  }
+
   return new Promise(res => tmp.toBlob(res, 'image/png'));
 }
 
